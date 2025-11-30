@@ -12,20 +12,21 @@ on:
       - "**/*.tf"
       - "tf/**"
 
+permissions:
+  id-token: write
+  contents: read
+
 env:
   AWS_REGION: us-east-1
   TF_VERSION: 1.6.0
   TF_STATE_BUCKET: remote-gn-terrraform
   TF_STATE_KEY: uat/terraform.tfstate
 
-permissions:
-  id-token: write
-  contents: read
 
+#############################################################
+# 1. TERRAFORM FMT  (runs first)
+#############################################################
 jobs:
-  #############################################################
-  # 1. Terraform FMT Job
-  #############################################################
   terraform_fmt:
     runs-on: ubuntu-latest
 
@@ -47,9 +48,10 @@ jobs:
         run: terraform fmt -recursive -check
 
 
-  #############################################################
-  # 2. Terraform INIT Job
-  #############################################################
+
+#############################################################
+# 2. TERRAFORM INIT  
+#############################################################
   terraform_init:
     runs-on: ubuntu-latest
     needs: terraform_fmt
@@ -67,16 +69,17 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Terraform init (S3 backend)
+      - name: Terraform init
         working-directory: ./tf
         run: terraform init \
               -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
               -backend-config="key=${{ env.TF_STATE_KEY }}"
 
 
-  #############################################################
-  # 3. Terraform VALIDATE Job
-  #############################################################
+
+#############################################################
+# 3. TERRAFORM VALIDATE
+#############################################################
   terraform_validate:
     runs-on: ubuntu-latest
     needs: terraform_init
@@ -99,9 +102,10 @@ jobs:
         run: terraform validate
 
 
-  #############################################################
-  # 4. Terraform PLAN Job
-  #############################################################
+
+#############################################################
+# 4. TERRAFORM PLAN
+#############################################################
   terraform_plan:
     runs-on: ubuntu-latest
     needs: terraform_validate
@@ -129,16 +133,17 @@ jobs:
         working-directory: ./tf
         run: terraform plan -out=tfplan
 
-      - name: Upload Terraform plan
+      - name: Upload tfplan artifact
         uses: actions/upload-artifact@v4
         with:
           name: tfplan
           path: tf/tfplan
 
 
-  #############################################################
-  # 5. Terraform APPLY Job (only on pushes to main)
-  #############################################################
+
+#############################################################
+# 5. TERRAFORM APPLY (only on push to main)
+#############################################################
   terraform_apply:
     runs-on: ubuntu-latest
     needs: terraform_plan
@@ -163,7 +168,7 @@ jobs:
               -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
               -backend-config="key=${{ env.TF_STATE_KEY }}"
 
-      - name: Download plan
+      - name: Download tfplan
         uses: actions/download-artifact@v4
         with:
           name: tfplan
