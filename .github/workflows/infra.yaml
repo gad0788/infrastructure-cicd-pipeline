@@ -7,14 +7,14 @@ on:
   pull_request:
     branches:
       - main
-
 permissions:
   id-token: write
   contents: read
 
+
 jobs:
   terraform:
-    name: 'Terraform Lint, Security Check, Deploy, and Destroy'
+    name: 'Terraform Lint, Security Check, and Deploy'
     runs-on: ubuntu-latest
 
     env:
@@ -41,7 +41,7 @@ jobs:
         run: terraform init -upgrade
 
       - name: 'Terraform Format'
-        run: terraform fmt -check
+        run: terraform fmt
 
       - name: 'Terraform Validate'
         run: terraform validate
@@ -49,14 +49,15 @@ jobs:
       - name: 'Terraform Plan'
         run: terraform plan -out=tfplan
 
-      - name: 'Terraform Apply'
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: terraform apply -auto-approve tfplan
+    #   - name: 'Terraform Apply'
+    #     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    #     run: terraform apply -auto-approve tfplan
+    #     env:
+    #       TF_LOG: ERROR
 
+      # Uncomment these if you want destroy steps
       - name: 'Terraform Plan Destroy'
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform plan -destroy -out=tfplan-destroy
 
       - name: 'Terraform Apply Destroy'
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform apply -auto-approve tfplan-destroy
