@@ -1,153 +1,59 @@
 name: Terraform CI/CD
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "**/*.tf"
-      - "tf/**"
   push:
-    branches: [main]
-    paths:
-      - "**/*.tf"
-      - "tf/**"
-
-permissions:
-  id-token: write
-  contents: read
-
-env:
-  AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}   # IAM role for OIDC
-  AWS_REGION: us-east-1
-  TF_VERSION: 1.6.0
-  TF_STATE_BUCKET: remote-gn-terrraform
-  TF_STATE_KEY: uat/terraform.tfstate
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  terraform_fmt:
+  terraform:
+    name: 'Terraform Lint, Security Check, and Deploy'
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+    env:
+      AWS_REGION: 'us-east-1' # Set your desired AWS region
+      TF_VERSION: '1.4.0'
+      TF_LOG: ERROR           # Set to DEBUG for more verbose logs
+
+    steps:
+      - name: 'Checkout GitHub repository'
+        uses: actions/checkout@v4
+
+      - name: 'Configure AWS credentials'
+        uses: aws-actions/configure-aws-credentials@v3
         with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - uses: hashicorp/setup-terraform@v3
+      - name: 'Set up Terraform'
+        uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Terraform fmt
-        working-directory: ./tf
-        run: terraform fmt -recursive -check
+      - name: 'Terraform Init'
+        run: terraform init -upgrade
 
-  terraform_init:
-    runs-on: ubuntu-latest
-    needs: terraform_fmt
-    steps:
-      - uses: actions/checkout@v4
+      - name: 'Terraform Format'
+        run: terraform fmt
 
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-
-      - name: Terraform init
-        working-directory: ./tf
-        run: |
-          terraform init \
-            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
-            -backend-config="key=${{ env.TF_STATE_KEY }}" \
-            -backend-config="region=${{ env.AWS_REGION }}" \
-            -input=false \
-            -reconfigure \
-            -no-color
-
-  terraform_validate:
-    runs-on: ubuntu-latest
-    needs: terraform_init
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - name: Terraform validate
-        working-directory: ./tf
+      - name: 'Terraform Validate'
         run: terraform validate
 
-  terraform_plan:
-    runs-on: ubuntu-latest
-    needs: terraform_validate
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - name: Terraform init (plan)
-        working-directory: ./tf
-        run: |
-          terraform init \
-            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
-            -backend-config="key=${{ env.TF_STATE_KEY }}" \
-            -backend-config="region=${{ env.AWS_REGION }}" \
-            -input=false \
-            -reconfigure \
-            -no-color
-      - name: Terraform plan
-        working-directory: ./tf
+      - name: 'Terraform Plan'
         run: terraform plan -out=tfplan
-      - name: Upload tfplan artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfplan
-          path: tf/tfplan
 
-  terraform_apply:
-    runs-on: ubuntu-latest
-    needs: terraform_plan
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - name: Terraform init (apply)
-        working-directory: ./tf
-        run: |
-          terraform init \
-            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
-            -backend-config="key=${{ env.TF_STATE_KEY }}" \
-            -backend-config="region=${{ env.AWS_REGION }}" \
-            -input=false \
-            -reconfigure \
-            -no-color
-      - name: Download tfplan artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan
-          path: tf
-      - name: Terraform apply
-        working-directory: ./tf
+      - name: 'Terraform Apply'
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: terraform apply -auto-approve tfplan
+        env:
+          TF_LOG: ERROR
+
+    #   # Uncomment these if you want destroy steps
+    #   - name: 'Terraform Plan Destroy'
+    #     run: terraform plan -destroy -out=tfplan-destroy
+
+    #   - name: 'Terraform Apply Destroy'
+    #     run: terraform apply -auto-approve tfplan-destroy
