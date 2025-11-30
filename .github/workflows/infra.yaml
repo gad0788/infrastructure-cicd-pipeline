@@ -22,9 +22,8 @@ env:
   TF_STATE_BUCKET: remote-gn-terrraform
   TF_STATE_KEY: uat/terraform.tfstate
 
-
 #############################################################
-# 1. TERRAFORM FMT  (runs first)
+# 1. Terraform FMT
 #############################################################
 jobs:
   terraform_fmt:
@@ -47,10 +46,8 @@ jobs:
         working-directory: ./tf
         run: terraform fmt -recursive -check
 
-
-
 #############################################################
-# 2. TERRAFORM INIT  
+# 2. Terraform INIT
 #############################################################
   terraform_init:
     runs-on: ubuntu-latest
@@ -69,16 +66,19 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Terraform init
+      - name: Terraform init (S3 backend, non-interactive)
         working-directory: ./tf
-        run: terraform init \
-              -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
-              -backend-config="key=${{ env.TF_STATE_KEY }}"
-
-
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ env.TF_STATE_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -input=false \
+            -reconfigure \
+            -no-color
 
 #############################################################
-# 3. TERRAFORM VALIDATE
+# 3. Terraform VALIDATE
 #############################################################
   terraform_validate:
     runs-on: ubuntu-latest
@@ -101,10 +101,8 @@ jobs:
         working-directory: ./tf
         run: terraform validate
 
-
-
 #############################################################
-# 4. TERRAFORM PLAN
+# 4. Terraform PLAN
 #############################################################
   terraform_plan:
     runs-on: ubuntu-latest
@@ -123,11 +121,16 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Terraform init
+      - name: Terraform init (plan stage)
         working-directory: ./tf
-        run: terraform init \
-              -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
-              -backend-config="key=${{ env.TF_STATE_KEY }}"
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ env.TF_STATE_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -input=false \
+            -reconfigure \
+            -no-color
 
       - name: Terraform plan
         working-directory: ./tf
@@ -139,10 +142,8 @@ jobs:
           name: tfplan
           path: tf/tfplan
 
-
-
 #############################################################
-# 5. TERRAFORM APPLY (only on push to main)
+# 5. Terraform APPLY (only on push to main)
 #############################################################
   terraform_apply:
     runs-on: ubuntu-latest
@@ -162,13 +163,18 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Terraform init
+      - name: Terraform init (apply stage)
         working-directory: ./tf
-        run: terraform init \
-              -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
-              -backend-config="key=${{ env.TF_STATE_KEY }}"
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ env.TF_STATE_KEY }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -input=false \
+            -reconfigure \
+            -no-color
 
-      - name: Download tfplan
+      - name: Download tfplan artifact
         uses: actions/download-artifact@v4
         with:
           name: tfplan
